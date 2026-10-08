@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Supabase local temporary files
+supabase/.temp/
+
+# Logs
+*.log
+npm-debug.log*
