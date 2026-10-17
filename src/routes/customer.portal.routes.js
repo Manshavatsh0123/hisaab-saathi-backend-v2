@@ -1,11 +1,6 @@
 const express = require("express");
 
-const {
-    getCustomerMe,
-    getCustomerAccounts,
-    getCustomerAccountDetails,
-    getCustomerPaymentDetails,
-    getCustomerDashboardSummary,
+const { getCustomerMe, getCustomerAccounts, getCustomerAccountDetails, getCustomerPaymentDetails, getCustomerDashboardSummary,
 } = require("../controllers/customer.controller");
 
 const requireAuth = require("../middleware/auth.middleware");

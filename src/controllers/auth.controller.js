@@ -432,8 +432,53 @@ const customerLogin = async (req, res, next) => {
     }
 };
 
+const refreshSession = async (req, res) => {
+  try {
+    const refresh_token = req.body?.refresh_token;
+
+    if (!refresh_token) {
+      return res.status(400).json({
+        success: false,
+        message: "Refresh token is required",
+      });
+    }
+
+    const { data, error } =
+      await supabase.auth.refreshSession({
+        refresh_token,
+      });
+
+    if (error || !data.session) {
+      return res.status(401).json({
+        success: false,
+        message: "Session expired. Please log in again.",
+      });
+    }
+
+    const session = data.session;
+
+    return res.status(200).json({
+      success: true,
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      expires_at: session.expires_at,
+      expires_in: session.expires_in,
+      token_type: session.token_type,
+    });
+  } catch (error) {
+    console.error("Refresh session error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to refresh session",
+    });
+  }
+};
+
+
 module.exports = {
     login,
     staffLogin,
     customerLogin,
+    refreshSession
 };

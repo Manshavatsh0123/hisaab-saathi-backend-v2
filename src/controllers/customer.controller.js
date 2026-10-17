@@ -249,7 +249,7 @@ async function createCustomer(req, res, next) {
 
         next(error);
     }
-}
+};
 
 async function getCustomerDetails(req, res, next) {
     try {
@@ -350,7 +350,7 @@ async function getCustomerDetails(req, res, next) {
 
         next(error);
     }
-}
+};
 
 const listCustomers = async (req, res) => {
     try {
