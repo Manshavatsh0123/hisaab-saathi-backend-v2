@@ -20,31 +20,32 @@ app.use(helmet());
 app.use(cookieParser());
 
 
+
 const allowedOrigins = (process.env.CLIENT_URLS || '')
     .split(',')
     .map((origin) => origin.trim().replace(/\/+$/, ''))
-    .filter(Boolean)
+    .filter(Boolean);
 
 app.use(
     cors({
         origin: (origin, callback) => {
-            // Allow requests without an Origin header, such as Postman
-            // and trusted server-to-server requests.
+            // Allow requests without an Origin header (e.g. Postman)
             if (!origin) {
-                return callback(null, true)
+                return callback(null, true);
             }
 
             if (allowedOrigins.includes(origin)) {
-                return callback(null, true)
+                return callback(null, true);
             }
 
             return callback(
                 new Error(`CORS blocked this origin: ${origin}`)
-            )
+            );
         },
         credentials: true,
     })
-)
+);
+
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
