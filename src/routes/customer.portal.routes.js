@@ -1,6 +1,6 @@
 const express = require("express");
 
-const { getCustomerMe, getCustomerAccounts, getCustomerAccountDetails, getCustomerPaymentDetails, getCustomerDashboardSummary,
+const { getCustomerMe, getCustomerAccounts, getCustomerAccountDetails, getCustomerPaymentDetails, getCustomerDashboardSummary,getCustomerAccountPayments,
 } = require("../controllers/customer.controller");
 
 const requireAuth = require("../middleware/auth.middleware");
@@ -23,17 +23,18 @@ router.get(
 );
 
 router.get(
-    "/accounts",
-    requireAuth,
-    requireRole("CUSTOMER"),
-    getCustomerAccounts
-);
-
-router.get(
     "/accounts/:accountId",
     requireAuth,
     requireRole("CUSTOMER"),
     getCustomerAccountDetails
+);
+
+
+router.get(
+    "/accounts/:accountId/payments",
+    requireAuth,
+    requireRole("CUSTOMER"),
+    getCustomerAccountPayments
 );
 
 router.get(

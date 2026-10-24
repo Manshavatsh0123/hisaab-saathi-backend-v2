@@ -453,7 +453,6 @@ const listCustomers = async (req, res) => {
 
 async function getCustomerMe(req, res, next) {
     try {
-
         const userId = req.user?.id;
 
         if (!userId) {
@@ -475,6 +474,9 @@ async function getCustomerMe(req, res, next) {
                 full_name,
                 phone,
                 alternate_phone,
+                aadhaar,
+                pan,
+                nominee_name,
                 status,
                 created_at,
                 updated_at
@@ -485,7 +487,7 @@ async function getCustomerMe(req, res, next) {
         if (customerError) {
             console.error(
                 "Get current customer error:",
-                customerError
+                customerError.message
             );
 
             return res.status(500).json({
@@ -493,7 +495,6 @@ async function getCustomerMe(req, res, next) {
                 message: "Failed to fetch customer profile",
             });
         }
-
 
         if (!customer) {
             return res.status(404).json({
@@ -509,17 +510,44 @@ async function getCustomerMe(req, res, next) {
             });
         }
 
+        // Return masked identification numbers.
+        const aadhaarDigits = (customer.aadhaar || "")
+            .replace(/\D/g, "");
+
+        const maskedAadhaar =
+            aadhaarDigits.length === 12
+                ? `XXXX XXXX ${aadhaarDigits.slice(-4)}`
+                : null;
+
+        const pan = (customer.pan || "")
+            .trim()
+            .toUpperCase();
+
+        const maskedPan =
+            /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)
+                ? `XXXXX${pan.slice(5)}`
+                : null;
+
         return res.status(200).json({
             success: true,
-            customer,
+            customer: {
+                id: customer.id,
+                user_id: customer.user_id,
+                customer_code: customer.customer_code,
+                full_name: customer.full_name,
+                phone: customer.phone,
+                alternate_phone: customer.alternate_phone,
+                aadhaar: maskedAadhaar,
+                pan: maskedPan,
+                nominee_name: customer.nominee_name,
+                status: customer.status,
+                created_at: customer.created_at,
+                updated_at: customer.updated_at,
+            },
         });
 
     } catch (error) {
-        console.error(
-            "Get customer me exception:",
-            error
-        );
-
+        console.error("Get customer me exception:", error.message);
         next(error);
     }
 }
@@ -816,6 +844,107 @@ async function getCustomerAccountDetails(req, res, next) {
             error
         );
 
+        next(error);
+    }
+}
+
+async function getCustomerAccountPayments(req, res, next) {
+    try {
+        const { accountId } = req.params;
+
+        if (!accountId) {
+            return res.status(400).json({
+                success: false,
+                message: "Account ID is required",
+            });
+        }
+
+        // 1. Find the logged-in customer
+        const { data: customer, error: customerError } = await supabase
+            .from("customers")
+            .select("id")
+            .eq("user_id", req.user.id)
+            .maybeSingle();
+
+        if (customerError) {
+            console.error("Get customer error:", customerError);
+            return res.status(500).json({
+                success: false,
+                message: "Failed to fetch customer",
+            });
+        }
+
+        if (!customer) {
+            return res.status(404).json({
+                success: false,
+                message: "Customer record not found",
+            });
+        }
+
+        // 2. Verify account ownership
+        const { data: account, error: accountError } = await supabase
+            .from("customer_accounts")
+            .select("id, account_number, scheme, account_name")
+            .eq("id", accountId)
+            .eq("customer_id", customer.id)
+            .maybeSingle();
+
+        if (accountError) {
+            console.error("Get customer account error:", accountError);
+            return res.status(500).json({
+                success: false,
+                message: "Failed to fetch account",
+            });
+        }
+
+        if (!account) {
+            return res.status(404).json({
+                success: false,
+                message: "Account not found",
+            });
+        }
+
+        // 3. Fetch payment history for this account only
+        const { data: payments, error: paymentsError } = await supabase
+            .from("payments")
+            .select(`
+                id,
+                account_id,
+                amount,
+                payment_date,
+                reference_number,
+                status,
+                receipt_number,
+                notes,
+                submitted_at,
+                approved_at,
+                rejected_at,
+                reversed_at,
+                rejection_reason,
+                reversal_reason,
+                created_at,
+                updated_at
+            `)
+            .eq("account_id", account.id)
+            .eq("customer_id", customer.id)
+            .order("payment_date", { ascending: false });
+
+        if (paymentsError) {
+            console.error("Get account payment history error:", paymentsError);
+            return res.status(500).json({
+                success: false,
+                message: "Failed to fetch payment history",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            account,
+            count: payments.length,
+            payments,
+        });
+    } catch (error) {
+        console.error("Get customer account payments exception:", error);
         next(error);
     }
 }
@@ -1254,5 +1383,6 @@ module.exports = {
     getCustomerAccounts,
     getCustomerAccountDetails,
     getCustomerPaymentDetails,
+    getCustomerAccountPayments,
     getCustomerDashboardSummary,
 };

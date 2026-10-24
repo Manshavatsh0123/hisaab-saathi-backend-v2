@@ -228,13 +228,15 @@ async function staffLogin(req, res, next) {
 
 const customerLogin = async (req, res, next) => {
     try {
-        const {
-            username,
-            password,
-        } = req.body || {};
+        const { username, password } = req.body || {};
 
-
-        if (!username || !password) {
+        // 1. Validate input
+        if (
+            typeof username !== "string" ||
+            typeof password !== "string" ||
+            !username.trim() ||
+            !password
+        ) {
             return res.status(400).json({
                 success: false,
                 message: "Username and password are required",
@@ -243,7 +245,7 @@ const customerLogin = async (req, res, next) => {
 
         const cleanUsername = username.trim().toLowerCase();
 
-
+        // 2. Fetch customer profile
         const {
             data: profile,
             error: profileError,
@@ -261,17 +263,13 @@ const customerLogin = async (req, res, next) => {
             .maybeSingle();
 
         if (profileError) {
-            console.error(
-                "Customer login profile lookup error:",
-                profileError
-            );
+            console.error("Customer profile lookup error:", profileError);
 
             return res.status(500).json({
                 success: false,
                 message: "Failed to find customer account",
             });
         }
-
 
         if (!profile) {
             return res.status(401).json({
@@ -280,14 +278,13 @@ const customerLogin = async (req, res, next) => {
             });
         }
 
-
+        // 3. Verify role and status
         if (profile.role !== "CUSTOMER") {
             return res.status(403).json({
                 success: false,
                 message: "Customer access required",
             });
         }
-
 
         if (profile.status !== "ACTIVE") {
             return res.status(403).json({
@@ -296,10 +293,8 @@ const customerLogin = async (req, res, next) => {
             });
         }
 
-
-        const authEmail =
-            `${cleanUsername}@hisaabsaathi.local`;
-
+        // 4. Authenticate with Supabase Auth
+        const authEmail = `${cleanUsername}@hisaabsaathi.local`;
 
         const {
             data: authData,
@@ -309,10 +304,14 @@ const customerLogin = async (req, res, next) => {
             password,
         });
 
-        if (authError || !authData?.user) {
+        if (
+            authError ||
+            !authData?.user ||
+            !authData?.session
+        ) {
             console.error(
-                "Customer Auth login error:",
-                authError
+                "Customer authentication failed:",
+                authError?.message
             );
 
             return res.status(401).json({
@@ -322,16 +321,14 @@ const customerLogin = async (req, res, next) => {
         }
 
         const user = authData.user;
+        const session = authData.session;
 
-
+        // 5. Verify authenticated user matches the profile
         if (user.id !== profile.id) {
-            console.error(
-                "Customer Auth/Profile ID mismatch",
-                {
-                    authUserId: user.id,
-                    profileId: profile.id,
-                }
-            );
+            console.error("Customer Auth/Profile ID mismatch", {
+                authUserId: user.id,
+                profileId: profile.id,
+            });
 
             return res.status(403).json({
                 success: false,
@@ -339,7 +336,7 @@ const customerLogin = async (req, res, next) => {
             });
         }
 
-
+        // 6. Fetch customer record
         const {
             data: customer,
             error: customerError,
@@ -359,17 +356,13 @@ const customerLogin = async (req, res, next) => {
             .maybeSingle();
 
         if (customerError) {
-            console.error(
-                "Customer login customer lookup error:",
-                customerError
-            );
+            console.error("Customer record lookup error:", customerError);
 
             return res.status(500).json({
                 success: false,
                 message: "Failed to fetch customer account",
             });
         }
-
 
         if (!customer) {
             return res.status(404).json({
@@ -378,7 +371,6 @@ const customerLogin = async (req, res, next) => {
             });
         }
 
-
         if (customer.status !== "ACTIVE") {
             return res.status(403).json({
                 success: false,
@@ -386,7 +378,25 @@ const customerLogin = async (req, res, next) => {
             });
         }
 
+        // 7. Ensure the session contains both tokens
+        if (!session.access_token || !session.refresh_token) {
+            return res.status(500).json({
+                success: false,
+                message: "Unable to create a valid login session",
+            });
+        }
 
+        // 8. Store refresh token in an HttpOnly cookie
+        res.cookie("refresh_token", session.refresh_token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            path: "/api/auth",
+            maxAge: 30 * 24 * 60 * 60 * 1000,
+        });
+
+        // 9. Return customer data and access token
+        // Refresh token is intentionally excluded from JSON.
         return res.status(200).json({
             success: true,
             message: "Customer login successful",
@@ -416,14 +426,15 @@ const customerLogin = async (req, res, next) => {
                 created_at: customer.created_at,
             },
 
-            session: authData.session,
+            session: {
+                access_token: session.access_token,
+                token_type: session.token_type,
+                expires_in: session.expires_in,
+                expires_at: session.expires_at,
+            },
         });
-
     } catch (error) {
-        console.error(
-            "Customer login exception:",
-            error
-        );
+        console.error("Customer login exception:", error);
 
         return res.status(500).json({
             success: false,
@@ -432,47 +443,65 @@ const customerLogin = async (req, res, next) => {
     }
 };
 
+
 const refreshSession = async (req, res) => {
-  try {
-    const refresh_token = req.body?.refresh_token;
+    try {
+        const refreshToken = req.cookies?.refresh_token;
 
-    if (!refresh_token) {
-      return res.status(400).json({
-        success: false,
-        message: "Refresh token is required",
-      });
+        if (!refreshToken) {
+            return res.status(401).json({
+                success: false,
+                message: "Refresh session unavailable. Please log in again.",
+            });
+        }
+
+        const { data, error } =
+            await supabaseAuth.auth.refreshSession({
+                refresh_token: refreshToken,
+            });
+
+        if (error || !data.session) {
+            res.clearCookie("refresh_token", {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                path: "/api/auth",
+            });
+
+            return res.status(401).json({
+                success: false,
+                message: "Session expired. Please log in again.",
+            });
+        }
+
+        const session = data.session;
+
+        // Supabase may rotate the refresh token.
+        res.cookie("refresh_token", session.refresh_token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            path: "/api/auth",
+            maxAge: 30 * 24 * 60 * 60 * 1000,
+        });
+
+        return res.status(200).json({
+            success: true,
+            session: {
+                access_token: session.access_token,
+                token_type: session.token_type,
+                expires_at: session.expires_at,
+                expires_in: session.expires_in,
+            },
+        });
+    } catch (error) {
+        console.error("Refresh session error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to refresh session",
+        });
     }
-
-    const { data, error } =
-      await supabase.auth.refreshSession({
-        refresh_token,
-      });
-
-    if (error || !data.session) {
-      return res.status(401).json({
-        success: false,
-        message: "Session expired. Please log in again.",
-      });
-    }
-
-    const session = data.session;
-
-    return res.status(200).json({
-      success: true,
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-      expires_at: session.expires_at,
-      expires_in: session.expires_in,
-      token_type: session.token_type,
-    });
-  } catch (error) {
-    console.error("Refresh session error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to refresh session",
-    });
-  }
 };
 
 
