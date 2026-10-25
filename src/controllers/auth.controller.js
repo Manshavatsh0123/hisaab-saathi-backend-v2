@@ -226,6 +226,7 @@ async function staffLogin(req, res, next) {
     }
 }
 
+
 const customerLogin = async (req, res, next) => {
     try {
         const { username, password } = req.body || {};
@@ -263,7 +264,10 @@ const customerLogin = async (req, res, next) => {
             .maybeSingle();
 
         if (profileError) {
-            console.error("Customer profile lookup error:", profileError);
+            console.error(
+                "Customer profile lookup error:",
+                profileError.message
+            );
 
             return res.status(500).json({
                 success: false,
@@ -323,12 +327,9 @@ const customerLogin = async (req, res, next) => {
         const user = authData.user;
         const session = authData.session;
 
-        // 5. Verify authenticated user matches the profile
+        // 5. Verify Auth user matches the profile
         if (user.id !== profile.id) {
-            console.error("Customer Auth/Profile ID mismatch", {
-                authUserId: user.id,
-                profileId: profile.id,
-            });
+            console.error("Customer Auth/Profile ID mismatch");
 
             return res.status(403).json({
                 success: false,
@@ -356,7 +357,10 @@ const customerLogin = async (req, res, next) => {
             .maybeSingle();
 
         if (customerError) {
-            console.error("Customer record lookup error:", customerError);
+            console.error(
+                "Customer record lookup error:",
+                customerError.message
+            );
 
             return res.status(500).json({
                 success: false,
@@ -378,7 +382,7 @@ const customerLogin = async (req, res, next) => {
             });
         }
 
-        // 7. Ensure the session contains both tokens
+        // 7. Validate session tokens
         if (!session.access_token || !session.refresh_token) {
             return res.status(500).json({
                 success: false,
@@ -386,17 +390,24 @@ const customerLogin = async (req, res, next) => {
             });
         }
 
-        // 8. Store refresh token in an HttpOnly cookie
-        res.cookie("refresh_token", session.refresh_token, {
+        // 8. Configure refresh cookie for local and production
+        const isProduction = process.env.NODE_ENV === "production";
+
+        const refreshCookieOptions = {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
+            secure: isProduction,
+            sameSite: isProduction ? "none" : "lax",
             path: "/api/auth",
             maxAge: 30 * 24 * 60 * 60 * 1000,
-        });
+        };
 
-        // 9. Return customer data and access token
-        // Refresh token is intentionally excluded from JSON.
+        res.cookie(
+            "refresh_token",
+            session.refresh_token,
+            refreshCookieOptions
+        );
+
+        // 9. Return access token; never expose refresh token in JSON
         return res.status(200).json({
             success: true,
             message: "Customer login successful",
@@ -434,7 +445,10 @@ const customerLogin = async (req, res, next) => {
             },
         });
     } catch (error) {
-        console.error("Customer login exception:", error);
+        console.error(
+            "Customer login exception:",
+            error.message
+        );
 
         return res.status(500).json({
             success: false,
@@ -503,7 +517,6 @@ const refreshSession = async (req, res) => {
         });
     }
 };
-
 
 module.exports = {
     login,

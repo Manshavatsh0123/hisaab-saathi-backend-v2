@@ -29,7 +29,7 @@ const allowedOrigins = (process.env.CLIENT_URLS || '')
 app.use(
     cors({
         origin: (origin, callback) => {
-            // Allow requests without an Origin header (e.g. Postman)
+            
             if (!origin) {
                 return callback(null, true);
             }
