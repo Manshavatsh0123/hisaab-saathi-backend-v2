@@ -474,8 +474,8 @@ async function getCustomerMe(req, res, next) {
                 full_name,
                 phone,
                 alternate_phone,
-                aadhaar,
-                pan,
+                aadhaar_number,
+                pan_number,
                 nominee_name,
                 status,
                 created_at,
@@ -510,8 +510,8 @@ async function getCustomerMe(req, res, next) {
             });
         }
 
-        // Return masked identification numbers.
-        const aadhaarDigits = (customer.aadhaar || "")
+        // Mask Aadhaar
+        const aadhaarDigits = (customer.aadhaar_number || "")
             .replace(/\D/g, "");
 
         const maskedAadhaar =
@@ -519,14 +519,22 @@ async function getCustomerMe(req, res, next) {
                 ? `XXXX XXXX ${aadhaarDigits.slice(-4)}`
                 : null;
 
-        const pan = (customer.pan || "")
+        // Mask PAN
+        const panValue = (customer.pan_number || "")
             .trim()
             .toUpperCase();
 
         const maskedPan =
-            /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)
-                ? `XXXXX${pan.slice(5)}`
+            /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(panValue)
+                ? `XXXXX${panValue.slice(5)}`
                 : null;
+
+        // Safe debugging logs — no actual document numbers
+        console.log("Customer ID:", customer.id);
+        console.log("Aadhaar exists:", Boolean(customer.aadhaar_number));
+        console.log("PAN exists:", Boolean(customer.pan_number));
+        console.log("Masked Aadhaar:", maskedAadhaar);
+        console.log("Masked PAN:", maskedPan);
 
         return res.status(200).json({
             success: true,
@@ -545,7 +553,6 @@ async function getCustomerMe(req, res, next) {
                 updated_at: customer.updated_at,
             },
         });
-
     } catch (error) {
         console.error("Get customer me exception:", error.message);
         next(error);
