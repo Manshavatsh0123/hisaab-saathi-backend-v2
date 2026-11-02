@@ -226,7 +226,6 @@ async function staffLogin(req, res, next) {
     }
 }
 
-
 const customerLogin = async (req, res, next) => {
     try {
         const { username, password } = req.body || {};
@@ -264,10 +263,7 @@ const customerLogin = async (req, res, next) => {
             .maybeSingle();
 
         if (profileError) {
-            console.error(
-                "Customer profile lookup error:",
-                profileError.message
-            );
+            console.error("Customer profile lookup error:", profileError);
 
             return res.status(500).json({
                 success: false,
@@ -327,9 +323,12 @@ const customerLogin = async (req, res, next) => {
         const user = authData.user;
         const session = authData.session;
 
-        // 5. Verify Auth user matches the profile
+        // 5. Verify authenticated user matches the profile
         if (user.id !== profile.id) {
-            console.error("Customer Auth/Profile ID mismatch");
+            console.error("Customer Auth/Profile ID mismatch", {
+                authUserId: user.id,
+                profileId: profile.id,
+            });
 
             return res.status(403).json({
                 success: false,
@@ -357,10 +356,7 @@ const customerLogin = async (req, res, next) => {
             .maybeSingle();
 
         if (customerError) {
-            console.error(
-                "Customer record lookup error:",
-                customerError.message
-            );
+            console.error("Customer record lookup error:", customerError);
 
             return res.status(500).json({
                 success: false,
@@ -382,7 +378,7 @@ const customerLogin = async (req, res, next) => {
             });
         }
 
-        // 7. Validate session tokens
+        // 7. Ensure the session contains both tokens
         if (!session.access_token || !session.refresh_token) {
             return res.status(500).json({
                 success: false,
@@ -390,24 +386,17 @@ const customerLogin = async (req, res, next) => {
             });
         }
 
-        // 8. Configure refresh cookie for local and production
-        const isProduction = process.env.NODE_ENV === "production";
-
-        const refreshCookieOptions = {
+        // 8. Store refresh token in an HttpOnly cookie
+        res.cookie("refresh_token", session.refresh_token, {
             httpOnly: true,
-            secure: isProduction,
-            sameSite: isProduction ? "none" : "lax",
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
             path: "/api/auth",
             maxAge: 30 * 24 * 60 * 60 * 1000,
-        };
+        });
 
-        res.cookie(
-            "refresh_token",
-            session.refresh_token,
-            refreshCookieOptions
-        );
-
-        // 9. Return access token; never expose refresh token in JSON
+        // 9. Return customer data and access token
+        // Refresh token is intentionally excluded from JSON.
         return res.status(200).json({
             success: true,
             message: "Customer login successful",
@@ -445,10 +434,7 @@ const customerLogin = async (req, res, next) => {
             },
         });
     } catch (error) {
-        console.error(
-            "Customer login exception:",
-            error.message
-        );
+        console.error("Customer login exception:", error);
 
         return res.status(500).json({
             success: false,
@@ -456,7 +442,6 @@ const customerLogin = async (req, res, next) => {
         });
     }
 };
-
 
 const refreshSession = async (req, res) => {
     try {
@@ -491,13 +476,13 @@ const refreshSession = async (req, res) => {
         const session = data.session;
 
         // Supabase may rotate the refresh token.
-        res.cookie("refresh_token", session.refresh_token, {
+        res.cookie("refreshToken", refreshToken, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
+            secure: true,
+            sameSite: "none",
             path: "/api/auth",
-            maxAge: 30 * 24 * 60 * 60 * 1000,
-        });
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+        })
 
         return res.status(200).json({
             success: true,
