@@ -20,7 +20,6 @@ app.use(helmet());
 app.use(cookieParser());
 
 
-
 const allowedOrigins = (process.env.CLIENT_URLS || '')
     .split(',')
     .map((origin) => origin.trim().replace(/\/+$/, ''))
@@ -28,21 +27,24 @@ const allowedOrigins = (process.env.CLIENT_URLS || '')
 
 app.use(
     cors({
-        origin: (origin, callback) => {
-            
-            if (!origin) {
-                return callback(null, true);
-            }
-
-            if (allowedOrigins.includes(origin)) {
-                return callback(null, true);
-            }
-
-            return callback(
-                new Error(`CORS blocked this origin: ${origin}`)
-            );
-        },
+        origin: [
+            "http://localhost:3000",
+            "https://jama-saathi.vercel.app",
+        ],
         credentials: true,
+        methods: [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+            "OPTIONS",
+        ],
+        allowedHeaders: [
+            "Content-Type",
+            "Authorization",
+            "Accept",
+        ],
     })
 );
 
